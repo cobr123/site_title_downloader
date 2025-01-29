@@ -8,7 +8,7 @@ import zio.ZIO
 object Main extends ZIOAppDefault {
   def run = Server.serve(routes).provide(Server.default)
 
-  private val routes = Routes(
+  val routes = Routes(
     Method.POST / "title" -> handler { (req: Request) =>
       getTitles(req)
     }
