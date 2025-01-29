@@ -19,7 +19,7 @@ object Main extends ZIOAppDefault {
     for {
       body <- req.body.asString
       _ <- ZIO.logTrace(s"body = $body")
-      urls = io.circe.parser.parse(body).flatMap(_.as[List[String]]) match {
+      urls = io.circe.parser.parse(body).flatMap(_.as[Set[String]]) match {
         case Left(failure) =>
           ZIO.logError(failure.getMessage)
           throw new IllegalArgumentException(s"Fail to parse urls list: ${failure.getMessage}")
@@ -27,11 +27,16 @@ object Main extends ZIOAppDefault {
           list
       }
       _ <- ZIO.logTrace(s"urls = $urls")
-      urlsWithTitles = urls.map { url =>
-        val doc = Jsoup.connect(url).get
-        List(url, doc.title)
+      urlsWithTitles <- ZIO.foreachPar(urls) { url =>
+        ZIO.attempt {
+          val doc = Jsoup.connect(url).get
+          (url -> doc.title)
+        }.catchAll { ex: Throwable =>
+          ZIO.logError(s"Fail to get title of '$url': ${ex.getMessage}")
+          ZIO.succeed((url -> ""))
+        }
       }
       _ <- ZIO.logTrace(s"urlsWithTitles = $urlsWithTitles")
-    } yield Response.text(urlsWithTitles.asJson.noSpaces)
+    } yield Response.text(urlsWithTitles.toMap.asJson.noSpaces)
   }
 }
