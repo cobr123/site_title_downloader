@@ -19,12 +19,12 @@ object Main extends ZIOAppDefault {
     for {
       body <- req.body.asString
       _ <- ZIO.logTrace(s"body = $body")
-      urls = io.circe.parser.parse(body).flatMap(_.as[Set[String]]) match {
+      urls <- io.circe.parser.parse(body).flatMap(_.as[Set[String]]) match {
         case Left(failure) =>
-          ZIO.logError(failure.getMessage)
-          throw new IllegalArgumentException(s"Fail to parse urls list: ${failure.getMessage}")
+          ZIO.logError(failure.getMessage) *>
+            ZIO.fail(new IllegalArgumentException(s"Fail to parse urls list: ${failure.getMessage}"))
         case Right(list) =>
-          list
+          ZIO.succeed(list)
       }
       _ <- ZIO.logTrace(s"urls = $urls")
       urlsWithTitles <- ZIO.foreachPar(urls) { url =>
@@ -32,8 +32,8 @@ object Main extends ZIOAppDefault {
           val doc = Jsoup.connect(url).get
           (url -> doc.title)
         }.catchAll { ex: Throwable =>
-          ZIO.logError(s"Fail to get title of '$url': ${ex.getMessage}")
-          ZIO.succeed((url -> ""))
+          ZIO.logError(s"Fail to get title of '$url': ${ex.getMessage}") *>
+            ZIO.succeed((url -> ""))
         }
       }
       _ <- ZIO.logTrace(s"urlsWithTitles = $urlsWithTitles")
