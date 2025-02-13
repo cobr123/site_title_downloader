@@ -1,6 +1,7 @@
 
 import io.circe.syntax.EncoderOps
 import org.jsoup.Jsoup
+import org.jsoup.parser.StreamParser
 import zio.ZIOAppDefault
 import zio.http._
 import zio.ZIO
@@ -28,15 +29,21 @@ object Main extends ZIOAppDefault {
       }
       _ <- ZIO.logTrace(s"urls = $urls")
       urlsWithTitles <- ZIO.foreachPar(urls) { url =>
-        ZIO.attempt {
-          val doc = Jsoup.connect(url).get
-          (url -> doc.title)
-        }.catchAll { ex: Throwable =>
-          ZIO.logError(s"Fail to get title of '$url': ${ex.getMessage}") *>
-            ZIO.succeed((url -> ""))
-        }
+        ZIO.acquireReleaseWith(acquire(url))(release)(use(url))
       }
       _ <- ZIO.logTrace(s"urlsWithTitles = $urlsWithTitles")
     } yield Response.text(urlsWithTitles.toMap.asJson.noSpaces)
   }
+
+  private def use(url: String)(parser: StreamParser) = ZIO.attempt {
+    val title = Option(parser.selectFirst("title")).map(_.text).getOrElse("")
+    (url -> title)
+  }.catchAll { ex: Throwable =>
+    ZIO.logError(s"Fail to get title of '$url': ${ex.getMessage}") *>
+      ZIO.succeed((url -> ""))
+  }
+
+  private def release(parser: StreamParser) = ZIO.succeed(parser.close())
+
+  private def acquire(url: String) = ZIO.attempt(Jsoup.connect(url).execute().streamParser())
 }
